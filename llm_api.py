@@ -49,6 +49,7 @@ RETRIEVED MESSAGES:
 {retrieved_block}
 
 TASK:
+- If the user query is about natural conversation, respond naturally and can neglect retrieved messages.
 - Identify which messages represent payments.
 - Use only the placeholders to calculate.
 - If multiple different #amount placeholders exist, express total as (#amount + #amount).
