@@ -68,7 +68,7 @@ def ask_llm(req: LLMRequest):
     
 
     payload = {
-        "model": "kwaipilot/kat-coder-pro:free",
+        "model": "nex-agi/deepseek-v3.1-nex-n1:free",
         "messages": [
             {"role": "user", "content": prompt}
         ]
