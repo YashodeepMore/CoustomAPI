@@ -17,55 +17,113 @@ HEADERS = {
 
 app = FastAPI()
 
-
 # -------- Request Schema --------
 class LLMRequest(BaseModel):
     user_query: str
     masked_messages: list[str]
+    mode: str = "general"
 
 
-# -------- Prompt Builder --------
-def build_prompt(user_query: str, messages: list[str]) -> str:
+# =========================================================
+# PROMPT BUILDERS (MODE-SPECIFIC)
+# =========================================================
+
+def build_general_prompt(user_query: str, messages: list[str]) -> str:
     retrieved_block = "\n".join(
         [f"{i+1}. \"{msg}\"" for i, msg in enumerate(messages)]
     )
 
-    prompt = f"""
-You are a natural-language reasoning assistant for a RAG system.
+    return f"""
+You are a helpful AI assistant.
 
-IMPORTANT RULES:
-- The text contains masked entities like #amount, #receiver, #date.
-- These placeholders MUST remain EXACTLY as they appear.
-- NEVER replace, modify, create, or remove placeholders.
-- Never hallucinate real names, numbers, dates, or apps.
-- Only summarize or compute using the placeholders given.
-- Ignore messages that do NOT contain #amount if question is about payments.
-- If total cannot be calculated because placeholders are the same, say so.
+Rules:
+- Answer clearly and concisely.
+- Use retrieved messages only if helpful.
+- Do not hallucinate facts.
 
-USER QUERY:
+User Query:
 "{user_query}"
 
-RETRIEVED MESSAGES:
+Retrieved Context:
+{retrieved_block}
+""".strip()
+
+
+def build_private_finance_prompt(user_query: str, messages: list[str]) -> str:
+    retrieved_block = "\n".join(
+        [f"{i+1}. \"{msg}\"" for i, msg in enumerate(messages)]
+    )
+
+    return f"""
+You are a financial reasoning assistant for a privacy-safe RAG system.
+
+IMPORTANT RULES:
+- Messages contain masked placeholders like #amount, #receiver, #date.
+- NEVER modify, replace, or invent placeholders.
+- NEVER infer real values.
+- Use placeholders exactly as given.
+- If calculation is impossible due to same placeholder reuse, say so clearly.
+- Ignore messages without #amount if the question is about payments.
+
+User Query:
+"{user_query}"
+
+Retrieved Messages:
 {retrieved_block}
 
-TASK:
-- If the user query is about natural conversation, respond naturally and can neglect retrieved messages.
-- Identify which messages represent payments.
-- Use only the placeholders to calculate.
-- If multiple different #amount placeholders exist, express total as (#amount + #amount).
-- If the same placeholder repeats, say:
-  "Both payments use the placeholder #amount, so the total cannot be calculated."
-
-Give final answer in 1–2 sentences.
-"""
-    return prompt.strip()
+Task:
+- Identify financial transactions.
+- Reason symbolically using placeholders.
+- Keep the answer short (1–2 sentences).
+""".strip()
 
 
-# -------- API Endpoint --------
+def build_learning_prompt(user_query: str, messages: list[str]) -> str:
+    retrieved_block = "\n".join(
+        [f"{i+1}. \"{msg}\"" for i, msg in enumerate(messages)]
+    )
+
+    return f"""
+You are a patient teaching assistant.
+
+Rules:
+- Explain concepts step by step.
+- Use simple language.
+- Examples are allowed.
+- Retrieved messages can be ignored if irrelevant.
+
+Question:
+"{user_query}"
+
+Optional Context:
+{retrieved_block}
+""".strip()
+
+
+# =========================================================
+# PROMPT ROUTER
+# =========================================================
+
+def build_prompt(user_query: str, messages: list[str], mode: str) -> str:
+    if mode == "private_finance":
+        return build_private_finance_prompt(user_query, messages)
+    elif mode == "learning":
+        return build_learning_prompt(user_query, messages)
+    else:
+        return build_general_prompt(user_query, messages)
+
+
+# =========================================================
+# API ENDPOINT
+# =========================================================
+
 @app.post("/ask")
 def ask_llm(req: LLMRequest):
-    prompt = build_prompt(req.user_query, req.masked_messages)
-    
+    prompt = build_prompt(
+        user_query=req.user_query,
+        messages=req.masked_messages,
+        mode=req.mode
+    )
 
     payload = {
         "model": "nex-agi/deepseek-v3.1-nex-n1:free",
@@ -90,5 +148,6 @@ def ask_llm(req: LLMRequest):
         raise HTTPException(status_code=500, detail=data)
 
     return {
-        "answer": data["choices"][0]["message"]["content"]
+        "answer": data["choices"][0]["message"]["content"],
+        "mode_used": req.mode
     }
